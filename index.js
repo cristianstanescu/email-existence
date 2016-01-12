@@ -10,34 +10,39 @@ module.exports = function (email, callback, timeout, from_email) {
     return;
   }
 
-  dns.resolveMx(email.split('@')[1], function(err, addresses){
-    var conn, commands, i;
+  dns.resolveMx(email.split('@')[1], function (err, addresses){
+    var conn, commands, i, exchange;
 
     if (err || addresses.length === 0) {
       callback(false,err);
       return;
     }
 
-    conn = net.createConnection(25, addresses[0].exchange);
+    exchange = addresses[0].exchange;
+
+    conn = net.createConnection(25, exchange);
 
     commands = [
-      "helo " + addresses[0].exchange,
-      "mail from: <"+from_email+">", "rcpt to: <"+email+">"
+      'helo ' + exchange,
+      'mail from: <' + from_email + '>',
+      'rcpt to: <' + email + '>'
     ];
 
     i = 0;
 
     conn.setEncoding('ascii');
     conn.setTimeout(timeout);
-
-    conn.on('error', function(err) {
-      conn.emit('false',err);
+    conn.on('error', function (err) {
+      conn.emit('false', err);
+    });
+    conn.on('uncaughtException', function (err) {
+      conn.emit('false', err);
     });
     conn.on('false', function (data) {
-      callback(false,data);
+      callback(false, data);
       conn.end();
     });
-    conn.on('connect', function() {
+    conn.on('connect', function () {
     });
     conn.on('prompt', function (data) {
       if(i < 3){
@@ -45,31 +50,30 @@ module.exports = function (email, callback, timeout, from_email) {
         conn.write('\r\n');
         i++;
       } else {
-        callback(true,data);
+        callback(true, data);
         conn.end();
         conn.destroy(); //destroy socket manually
       }
     });
     conn.on('undetermined', function (data) {
-      //in case of an unrecognisable response tell the callback we're not sure
+      // in case of an unrecognisable response tell the callback we're not sure
       callback(false, data);
       conn.end();
-      conn.destroy(); //destroy socket manually
+      conn.destroy(); // destroy socket manually
     });
     conn.on('timeout', function () {
-      // conn.emit('undetermined');
       callback(false, 'Timeout');
       conn.end();
       conn.destroy();
     });
-    conn.on('data', function(data) {
+    conn.on('data', function (data) {
       if(data.indexOf("220") === 0 || data.indexOf("250") === 0 ||
         data.indexOf("\n220") !== -1 || data.indexOf("\n250") !== -1) {
-        conn.emit('prompt',data);
+        conn.emit('prompt', data);
       } else if(data.indexOf("\n550") !== -1 || data.indexOf("550") === 0) {
-        conn.emit('false',data);
+        conn.emit('false', data);
       } else {
-        conn.emit('undetermined',data);
+        conn.emit('undetermined', data);
       }
     });
   });
